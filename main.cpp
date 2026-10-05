@@ -186,9 +186,11 @@ void Log(const std::string& message) {
 }
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
+#ifdef USE_IMGUI
 	if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wparam, lparam)) {
 		return true;
 	}
+#endif
 	switch (msg) {
 	case WM_DESTROY:
 		PostQuitMessage(0);
@@ -1113,6 +1115,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 
 	Log(ConvertString(std::format(L"WSTRING{}\n", wstringValue)));
 
+#ifdef USE_IMGUI
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGui::StyleColorsDark();
@@ -1125,6 +1128,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 		srvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
 	ImGuiIO& io = ImGui::GetIO();
 	io.Fonts->Build();
+#endif
 
 	bool useMonsterBall = false;
 
@@ -1156,6 +1160,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 				OutputDebugStringA("Key 0 Released!\n");
 			}
 
+#ifdef USE_IMGUI
 			ImGui_ImplDX12_NewFrame();
 			ImGui_ImplWin32_NewFrame();
 			ImGui::NewFrame();
@@ -1175,6 +1180,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 
 			ImGui::ShowDemoWindow();
 			ImGui::Render();
+#endif
 
 			Matrix4x4 uvTransformMatrix = calc::MakeScaleMatrix(uvTransformSprite.scale);
 			uvTransformMatrix = calc::Multiply(uvTransformMatrix, calc::MakeRotateZMatrix(uvTransformSprite.rotate.z));
@@ -1263,7 +1269,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 			// 左上のスプライト描画
 			//commandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
 
+#ifdef USE_IMGUI
 			ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList.Get());
+#endif
 
 			barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
 			barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
