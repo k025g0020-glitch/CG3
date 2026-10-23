@@ -632,11 +632,12 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 
 	ShowWindow(hwnd, SW_SHOW);
 
-	Input input;
-	input.Initialize(hInstance, hwnd);
+	// 自作クラスのインスタンスをnewで動的に生成する
+	Input* input = new Input();
+	input->Initialize(hInstance, hwnd);
 
-	DebugCamera debugCamera;
-	debugCamera.Initialize();
+	DebugCamera* debugCamera = new DebugCamera();
+	debugCamera->Initialize();
 
 	ComPtr<IDXGIFactory7> dxgiFactory = nullptr;
 	HRESULT hr = CreateDXGIFactory(IID_PPV_ARGS(&dxgiFactory));
@@ -1142,21 +1143,21 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 		} else {
 
 			// --- キー入力状態の更新 ---
-			input.Update();
+			input->Update();
 
-			if (input.TriggerKey(DIK_RETURN)) {
+			if (input->TriggerKey(DIK_RETURN)) {
 				isDebugCameraActive = !isDebugCameraActive;
 			}
 
 			if (isDebugCameraActive) {
-				debugCamera.Update(input);
+				debugCamera->Update(*input);
 			}
 
 			// --- キー入力の判定テスト ---
-			if (input.TriggerKey(DIK_0)) {
+			if (input->TriggerKey(DIK_0)) {
 				OutputDebugStringA("Key 0 Triggered!\n");
 			}
-			if (input.IsReleaseKey(DIK_0)) {
+			if (input->IsReleaseKey(DIK_0)) {
 				OutputDebugStringA("Key 0 Released!\n");
 			}
 
@@ -1189,19 +1190,18 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 
 			//transform.rotate.y += 0.03f;
 
-			Matrix4x4 worldMatrix = calc::MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
-			Matrix4x4 viewMatrix;
-			Matrix4x4 projectionMatrix;
+			// ループ外で宣言済みの変数に再代入する(シャドウイング防止)
+			worldMatrix = calc::MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
 
 			if (isDebugCameraActive) {
-				viewMatrix = debugCamera.GetViewMatrix();
-				projectionMatrix = debugCamera.GetProjectionMatrix();
+				viewMatrix = debugCamera->GetViewMatrix();
+				projectionMatrix = debugCamera->GetProjectionMatrix();
 			} else {
 				viewMatrix = calc::Inverse(calc::MakeAffineMatrix(cameraTransform.scale, cameraTransform.rotate, cameraTransform.translate));
 				projectionMatrix = calc::MakePerspectiveFovMatrix(0.45f, float(kClientWidth) / float(kClientHeight), 0.1f, 100.0f);
 			}
 
-			Matrix4x4 worldViewProjectionMatrix = calc::Multiply(worldMatrix, calc::Multiply(viewMatrix, projectionMatrix));
+			worldViewProjectionMatrix = calc::Multiply(worldMatrix, calc::Multiply(viewMatrix, projectionMatrix));
 
 			wvpData->WVP = worldViewProjectionMatrix;
 			wvpData->World = worldMatrix;
@@ -1310,7 +1310,13 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 	ImGui::DestroyContext();
 #endif
 
-	input.Finalize();
+	input->Finalize();
+
+	// newで生成した自作クラスのインスタンスをdeleteで解放する
+	delete debugCamera;
+	debugCamera = nullptr;
+	delete input;
+	input = nullptr;
 
 	xAudio2.Reset();
 	SoundUnload(&soundData1);
