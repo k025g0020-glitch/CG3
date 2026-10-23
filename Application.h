@@ -17,6 +17,7 @@ private:
 	void Initialize(HINSTANCE instance);
 	void InitializeRootSignatureAndPipeline();
 	void InitializeScene();
+	void InitializeParticle();
 	void InitializeImGui();
 	void Update();
 	void Draw();
@@ -40,4 +41,19 @@ private:
 	Transform cameraTransform_{{1,1,1},{0,0,0},{0,0,-10}};
 	bool useMonsterBall_ = false, debugCameraActive_ = false;
 	BlendMode blendMode_ = BlendMode::None;
+	bool drawObject3d_ = false;
+
+	// ---- Particle (Instancing) ----
+	static constexpr uint32_t kNumInstance = 10; // インスタンス数
+	static constexpr uint32_t kInstancingSrvIndex = 3; // Heapの3番目にInstancing用のSRVを作成する
+	GraphicsPipeline particlePipeline_;
+	Microsoft::WRL::ComPtr<ID3D12RootSignature> particleRootSignature_;
+	Microsoft::WRL::ComPtr<ID3D12Resource> particleVertexResource_, particleMaterialResource_, instancingResource_;
+	D3D12_VERTEX_BUFFER_VIEW particleVertexView_{};
+	D3D12_GPU_DESCRIPTOR_HANDLE instancingSrvHandleGPU_{};
+	ModelData particleModel_;
+	Material* particleMaterial_ = nullptr;
+	TransformationMatrix* instancingData_ = nullptr;
+	Transform transforms_[kNumInstance]{};
+	uint32_t numInstance_ = kNumInstance; // 実際に描画する数（kNumInstance以下）
 };
