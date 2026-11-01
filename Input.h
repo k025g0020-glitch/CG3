@@ -1,5 +1,5 @@
 #pragma once
-#include <Windows.h>
+#include "WinApp.h"
 #include <cstdint>
 #include <wrl.h>
 
@@ -12,7 +12,7 @@
 class Input {
 public:
 	// 初期化
-	void Initialize(HINSTANCE hInstance, HWND hwnd);
+	void Initialize(WinApp* winApp);
 
 	// 毎フレームの更新処理
 	void Update();
@@ -42,6 +42,9 @@ public:
 	DIMOUSESTATE GetMouseMove() const { return mouseState_; }
 
 private:
+	// WindowsAPI (借りてきたインスタンスなので、ここではdeleteしない)
+	WinApp* winApp_ = nullptr;
+
 	Microsoft::WRL::ComPtr<IDirectInput8> directInput_ = nullptr;
 	Microsoft::WRL::ComPtr<IDirectInputDevice8> keyboard_ = nullptr;
 	BYTE key_[256] = {};    // 今フレームのキー状態

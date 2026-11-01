@@ -1,5 +1,4 @@
 #define _USE_MATH_DEFINES
-#include <Windows.h>
 #include <cmath>
 #include <d3d12.h>
 #include <dxgi1_6.h>
@@ -16,6 +15,7 @@
 #include <wrl.h>
 #include <xaudio2.h>
 
+#include "WinApp.h"
 #include "Input.h"
 #include "calc.h"
 #include "DebugCamera.h"
@@ -25,7 +25,6 @@
 #include "externals/imgui/imgui.h"
 #include "externals/imgui/imgui_impl_dx12.h"
 #include "externals/imgui/imgui_impl_win32.h"
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 #endif
 
 #pragma comment(lib, "xaudio2.lib")
@@ -183,20 +182,6 @@ std::wstring ConvertString(const std::string& str);
 
 void Log(const std::string& message) {
 	OutputDebugStringA(message.c_str());
-}
-
-LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
-#ifdef USE_IMGUI
-	if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wparam, lparam)) {
-		return true;
-	}
-#endif
-	switch (msg) {
-	case WM_DESTROY:
-		PostQuitMessage(0);
-		return 0;
-	}
-	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
 
 static LONG WINAPI ExportDump(EXCEPTION_POINTERS* exception) {
@@ -589,38 +574,15 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 
 	SetUnhandledExceptionFilter(ExportDump);
 
-	CoInitializeEx(0, COINIT_MULTITHREADED);
-
 	ComPtr<IXAudio2> xAudio2;
 	IXAudio2MasteringVoice* masterVoice = nullptr;
 
-	WNDCLASS wc{};
-	wc.lpfnWndProc = WindowProc;
-	wc.lpszClassName = L"CG2WindowClass";
-	wc.hInstance = GetModuleHandle(nullptr);
-	wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-	RegisterClass(&wc);
+	// ポインタ
+	WinApp* winApp = nullptr;
 
-	const int32_t kClientWidth = 1280;
-	const int32_t kClientHeight = 720;
-
-	RECT wrc = { 0, 0, kClientWidth, kClientHeight };
-
-	AdjustWindowRect(&wrc, WS_OVERLAPPEDWINDOW, false);
-
-	HWND hwnd = CreateWindow(
-		wc.lpszClassName,
-		L"CG2",
-		WS_OVERLAPPEDWINDOW,
-		CW_USEDEFAULT,
-		CW_USEDEFAULT,
-		wrc.right - wrc.left,
-		wrc.bottom - wrc.top,
-		nullptr,
-		nullptr,
-		wc.hInstance,
-		nullptr
-	);
+	// WindowsAPIの初期化
+	winApp = new WinApp();
+	winApp->Initialize();
 
 #ifdef _DEBUG
 	ComPtr<ID3D12Debug1> debugController = nullptr;
@@ -630,11 +592,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 	}
 #endif
 
-	ShowWindow(hwnd, SW_SHOW);
-
 	// 自作クラスのインスタンスをnewで動的に生成する
 	Input* input = new Input();
-	input->Initialize(hInstance, hwnd);
+	input->Initialize(winApp);
 
 	DebugCamera* debugCamera = new DebugCamera();
 	debugCamera->Initialize();
@@ -731,8 +691,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 
 	ComPtr<IDXGISwapChain4> swapChain = nullptr;
 	DXGI_SWAP_CHAIN_DESC1 swapChainDesc{};
-	swapChainDesc.Width = kClientWidth;
-	swapChainDesc.Height = kClientHeight;
+	swapChainDesc.Width = WinApp::kClientWidth;
+	swapChainDesc.Height = WinApp::kClientHeight;
 	swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 	swapChainDesc.SampleDesc.Count = 1;
 	swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
@@ -741,7 +701,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 
 	hr = dxgiFactory->CreateSwapChainForHwnd(
 		commandQueue.Get(),
-		hwnd,
+		winApp->GetHwnd(),
 		&swapChainDesc,
 		nullptr,
 		nullptr,
@@ -984,7 +944,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 	ComPtr<ID3D12Resource> textureResource2 = CreateTextureResource(device, metadata2);
 	UploadTextureData(textureResource2, mipImages2);
 
-	ComPtr<ID3D12Resource> depthStencilResource = CreateDepthStencilTextureResource(device, kClientWidth, kClientHeight);
+	ComPtr<ID3D12Resource> depthStencilResource = CreateDepthStencilTextureResource(device, WinApp::kClientWidth, WinApp::kClientHeight);
 
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
 	dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
@@ -1028,7 +988,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 
 	Transform cameraTransform{ {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -10.0f} };
 	Matrix4x4 viewMatrix = calc::Inverse(calc::MakeAffineMatrix(cameraTransform.scale, cameraTransform.rotate, cameraTransform.translate));
-	Matrix4x4 projectionMatrix = calc::MakePerspectiveFovMatrix(0.45f, float(kClientWidth) / float(kClientHeight), 0.1f, 100.0f);
+	Matrix4x4 projectionMatrix = calc::MakePerspectiveFovMatrix(0.45f, float(WinApp::kClientWidth) / float(WinApp::kClientHeight), 0.1f, 100.0f);
 	Matrix4x4 worldViewProjectionMatrix = calc::Multiply(worldMatrix, calc::Multiply(viewMatrix, projectionMatrix));
 
 	// VertexShaderで利用するtransformationMatrix用のResourceを作る
@@ -1100,8 +1060,8 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 	assert(SUCCEEDED(hr));
 
 	D3D12_VIEWPORT viewport{};
-	viewport.Width = static_cast<float>(kClientWidth);
-	viewport.Height = static_cast<float>(kClientHeight);
+	viewport.Width = static_cast<float>(WinApp::kClientWidth);
+	viewport.Height = static_cast<float>(WinApp::kClientHeight);
 	viewport.TopLeftX = 0;
 	viewport.TopLeftY = 0;
 	viewport.MinDepth = 0.0f;
@@ -1110,9 +1070,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 	D3D12_RECT scissorRect{};
 
 	scissorRect.left = 0;
-	scissorRect.right = kClientWidth;
+	scissorRect.right = WinApp::kClientWidth;
 	scissorRect.top = 0;
-	scissorRect.bottom = kClientHeight;
+	scissorRect.bottom = WinApp::kClientHeight;
 
 	Log(ConvertString(std::format(L"WSTRING{}\n", wstringValue)));
 
@@ -1120,7 +1080,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGui::StyleColorsDark();
-	ImGui_ImplWin32_Init(hwnd);
+	ImGui_ImplWin32_Init(winApp->GetHwnd());
 	ImGui_ImplDX12_Init(device.Get(),
 		swapChainDesc.BufferCount,
 		rtvDesc.Format,
@@ -1135,163 +1095,163 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 
 	bool isDebugCameraActive = false;
 
-	MSG msg{};
-	while (msg.message != WM_QUIT) {
-		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
+	// ゲームループ
+	while (true) {
+		// Windowsのメッセージ処理
+		if (winApp->ProcessMessage()) {
+			// ゲームループを抜ける
+			break;
+		}
+
+		// --- キー入力状態の更新 ---
+		input->Update();
+
+		if (input->TriggerKey(DIK_RETURN)) {
+			isDebugCameraActive = !isDebugCameraActive;
+		}
+
+		if (isDebugCameraActive) {
+			debugCamera->Update(*input);
+		}
+
+		// --- キー入力の判定テスト ---
+		if (input->TriggerKey(DIK_0)) {
+			OutputDebugStringA("Key 0 Triggered!\n");
+		}
+		if (input->IsReleaseKey(DIK_0)) {
+			OutputDebugStringA("Key 0 Released!\n");
+		}
+
+#ifdef USE_IMGUI
+		ImGui_ImplDX12_NewFrame();
+		ImGui_ImplWin32_NewFrame();
+		ImGui::NewFrame();
+
+		ImGui::Begin("Debug Window");
+		ImGui::DragFloat3("Camera Position", &cameraTransform.translate.x, 0.1f);
+		ImGui::DragFloat3("Sphere Rotation", &transform.rotate.x, 0.01f);
+		ImGui::Checkbox("useMonsterBall", &useMonsterBall);
+		ImGui::ColorEdit4("Light Color", directionalLightData->color);
+		ImGui::SliderFloat3("Light Direction", directionalLightData->direction, -1.0f, 1.0f);
+		ImGui::SliderFloat("Intensity", &directionalLightData->intensity, 0.0f, 5.0f);
+
+		ImGui::DragFloat2("UVTranslate", &uvTransformSprite.translate.x, 0.01f, -10.0f, 10.0f);
+		ImGui::DragFloat2("UVScale", &uvTransformSprite.scale.x, 0.01f, -10.0f, 10.0f);
+		ImGui::SliderAngle("UVRotate", &uvTransformSprite.rotate.z);
+		ImGui::End();
+
+		ImGui::ShowDemoWindow();
+		ImGui::Render();
+#endif
+
+		Matrix4x4 uvTransformMatrix = calc::MakeScaleMatrix(uvTransformSprite.scale);
+		uvTransformMatrix = calc::Multiply(uvTransformMatrix, calc::MakeRotateZMatrix(uvTransformSprite.rotate.z));
+		uvTransformMatrix = calc::Multiply(uvTransformMatrix, calc::MakeTranslateMatrix(uvTransformSprite.translate));
+		materialDataSprite->uvTransform = uvTransformMatrix;
+
+		//transform.rotate.y += 0.03f;
+
+		// ループ外で宣言済みの変数に再代入する(シャドウイング防止)
+		worldMatrix = calc::MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
+
+		if (isDebugCameraActive) {
+			viewMatrix = debugCamera->GetViewMatrix();
+			projectionMatrix = debugCamera->GetProjectionMatrix();
 		} else {
+			viewMatrix = calc::Inverse(calc::MakeAffineMatrix(cameraTransform.scale, cameraTransform.rotate, cameraTransform.translate));
+			projectionMatrix = calc::MakePerspectiveFovMatrix(0.45f, float(WinApp::kClientWidth) / float(WinApp::kClientHeight), 0.1f, 100.0f);
+		}
 
-			// --- キー入力状態の更新 ---
-			input->Update();
+		worldViewProjectionMatrix = calc::Multiply(worldMatrix, calc::Multiply(viewMatrix, projectionMatrix));
 
-			if (input->TriggerKey(DIK_RETURN)) {
-				isDebugCameraActive = !isDebugCameraActive;
-			}
+		wvpData->WVP = worldViewProjectionMatrix;
+		wvpData->World = worldMatrix;
+		wvpData->WorldInverseTranspose = calc::Transpose(calc::Inverse(worldMatrix));
 
-			if (isDebugCameraActive) {
-				debugCamera->Update(*input);
-			}
+		Matrix4x4 worldMatrixSprite = calc::MakeAffineMatrix(transformSprite.scale, transformSprite.rotate, transformSprite.translate);
+		Matrix4x4 viewMatrixSprite = calc::MakeIdentity4x4();
+		Matrix4x4 projectionMatrixSprite = calc::MakeOrthographicMatrix(0.0f, 0.0f, float(WinApp::kClientWidth), float(WinApp::kClientHeight), 0.0f, 100.0f);
+		Matrix4x4 worldViewProjectionMatrixSprite = calc::Multiply(worldMatrixSprite, calc::Multiply(viewMatrixSprite, projectionMatrixSprite));
 
-			// --- キー入力の判定テスト ---
-			if (input->TriggerKey(DIK_0)) {
-				OutputDebugStringA("Key 0 Triggered!\n");
-			}
-			if (input->IsReleaseKey(DIK_0)) {
-				OutputDebugStringA("Key 0 Released!\n");
-			}
+		transformationMatrixDataSprite->WVP = worldViewProjectionMatrixSprite;
+		transformationMatrixDataSprite->World = worldMatrixSprite;
+		transformationMatrixDataSprite->WorldInverseTranspose = calc::Transpose(calc::Inverse(worldMatrixSprite));
 
-#ifdef USE_IMGUI
-			ImGui_ImplDX12_NewFrame();
-			ImGui_ImplWin32_NewFrame();
-			ImGui::NewFrame();
+		// ゲームの処理
+		UINT backBufferIndex = swapChain->GetCurrentBackBufferIndex();
 
-			ImGui::Begin("Debug Window");
-			ImGui::DragFloat3("Camera Position", &cameraTransform.translate.x, 0.1f);
-			ImGui::DragFloat3("Sphere Rotation", &transform.rotate.x, 0.01f);
-			ImGui::Checkbox("useMonsterBall", &useMonsterBall);
-			ImGui::ColorEdit4("Light Color", directionalLightData->color);
-			ImGui::SliderFloat3("Light Direction", directionalLightData->direction, -1.0f, 1.0f);
-			ImGui::SliderFloat("Intensity", &directionalLightData->intensity, 0.0f, 5.0f);
+		hr = commandAllocator->Reset();
+		assert(SUCCEEDED(hr));
+		hr = commandList->Reset(commandAllocator.Get(), nullptr);
+		assert(SUCCEEDED(hr));
 
-			ImGui::DragFloat2("UVTranslate", &uvTransformSprite.translate.x, 0.01f, -10.0f, 10.0f);
-			ImGui::DragFloat2("UVScale", &uvTransformSprite.scale.x, 0.01f, -10.0f, 10.0f);
-			ImGui::SliderAngle("UVRotate", &uvTransformSprite.rotate.z);
-			ImGui::End();
+		D3D12_RESOURCE_BARRIER barrier{};
+		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		barrier.Transition.pResource = swapChainResources[backBufferIndex].Get();
+		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+		commandList->ResourceBarrier(1, &barrier);
 
-			ImGui::ShowDemoWindow();
-			ImGui::Render();
-#endif
+		commandList->OMSetRenderTargets(1, &rtvHandles[backBufferIndex], false, &dsvHandle);
 
-			Matrix4x4 uvTransformMatrix = calc::MakeScaleMatrix(uvTransformSprite.scale);
-			uvTransformMatrix = calc::Multiply(uvTransformMatrix, calc::MakeRotateZMatrix(uvTransformSprite.rotate.z));
-			uvTransformMatrix = calc::Multiply(uvTransformMatrix, calc::MakeTranslateMatrix(uvTransformSprite.translate));
-			materialDataSprite->uvTransform = uvTransformMatrix;
+		float clearColor[] = { 0.1f, 0.25f, 0.5f, 1.0f };
+		commandList->ClearRenderTargetView(rtvHandles[backBufferIndex], clearColor, 0, nullptr);
 
-			//transform.rotate.y += 0.03f;
+		commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
-			// ループ外で宣言済みの変数に再代入する(シャドウイング防止)
-			worldMatrix = calc::MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
+		commandList->RSSetViewports(1, &viewport);
+		commandList->RSSetScissorRects(1, &scissorRect);
 
-			if (isDebugCameraActive) {
-				viewMatrix = debugCamera->GetViewMatrix();
-				projectionMatrix = debugCamera->GetProjectionMatrix();
-			} else {
-				viewMatrix = calc::Inverse(calc::MakeAffineMatrix(cameraTransform.scale, cameraTransform.rotate, cameraTransform.translate));
-				projectionMatrix = calc::MakePerspectiveFovMatrix(0.45f, float(kClientWidth) / float(kClientHeight), 0.1f, 100.0f);
-			}
+		commandList->SetGraphicsRootSignature(rootSignature.Get());
+		commandList->SetPipelineState(graphicsPipelineState.Get());
 
-			worldViewProjectionMatrix = calc::Multiply(worldMatrix, calc::Multiply(viewMatrix, projectionMatrix));
+		commandList->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress());
 
-			wvpData->WVP = worldViewProjectionMatrix;
-			wvpData->World = worldMatrix;
-			wvpData->WorldInverseTranspose = calc::Transpose(calc::Inverse(worldMatrix));
+		commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-			Matrix4x4 worldMatrixSprite = calc::MakeAffineMatrix(transformSprite.scale, transformSprite.rotate, transformSprite.translate);
-			Matrix4x4 viewMatrixSprite = calc::MakeIdentity4x4();
-			Matrix4x4 projectionMatrixSprite = calc::MakeOrthographicMatrix(0.0f, 0.0f, float(kClientWidth), float(kClientHeight), 0.0f, 100.0f);
-			Matrix4x4 worldViewProjectionMatrixSprite = calc::Multiply(worldMatrixSprite, calc::Multiply(viewMatrixSprite, projectionMatrixSprite));
+		commandList->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress());
+		commandList->SetGraphicsRootConstantBufferView(1, wvpResource->GetGPUVirtualAddress());
 
-			transformationMatrixDataSprite->WVP = worldViewProjectionMatrixSprite;
-			transformationMatrixDataSprite->World = worldMatrixSprite;
-			transformationMatrixDataSprite->WorldInverseTranspose = calc::Transpose(calc::Inverse(worldMatrixSprite));
+		ID3D12DescriptorHeap* descriptorHeaps[] = { srvDescriptorHeap.Get() };
+		commandList->SetDescriptorHeaps(1, descriptorHeaps);
+		commandList->SetGraphicsRootDescriptorTable(2, useMonsterBall ? textureSrvHandleGPU2 : textureSrvHandleGPU);
 
-			// ゲームの処理
-			UINT backBufferIndex = swapChain->GetCurrentBackBufferIndex();
+		commandList->DrawInstanced(UINT(modelData.vertices.size()), 1, 0, 0);
 
-			hr = commandAllocator->Reset();
-			assert(SUCCEEDED(hr));
-			hr = commandList->Reset(commandAllocator.Get(), nullptr);
-			assert(SUCCEEDED(hr));
+		commandList->SetGraphicsRootDescriptorTable(2, textureSrvHandleGPU);
+		commandList->IASetVertexBuffers(0, 1, &vertexBufferViewSprite);
+		commandList->IASetIndexBuffer(&indexBufferViewSprite);
+		commandList->SetGraphicsRootConstantBufferView(1, transformationMatrixResourceSprite->GetGPUVirtualAddress());
+		commandList->SetGraphicsRootConstantBufferView(0, materialResourceSprite->GetGPUVirtualAddress());
 
-			D3D12_RESOURCE_BARRIER barrier{};
-			barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-			barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-			barrier.Transition.pResource = swapChainResources[backBufferIndex].Get();
-			barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-			barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-			barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-			commandList->ResourceBarrier(1, &barrier);
-
-			commandList->OMSetRenderTargets(1, &rtvHandles[backBufferIndex], false, &dsvHandle);
-
-			float clearColor[] = { 0.1f, 0.25f, 0.5f, 1.0f };
-			commandList->ClearRenderTargetView(rtvHandles[backBufferIndex], clearColor, 0, nullptr);
-
-			commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
-			commandList->RSSetViewports(1, &viewport);
-			commandList->RSSetScissorRects(1, &scissorRect);
-
-			commandList->SetGraphicsRootSignature(rootSignature.Get());
-			commandList->SetPipelineState(graphicsPipelineState.Get());
-
-			commandList->SetGraphicsRootConstantBufferView(3, directionalLightResource->GetGPUVirtualAddress());
-
-			commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
-			commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-			commandList->SetGraphicsRootConstantBufferView(0, materialResource->GetGPUVirtualAddress());
-			commandList->SetGraphicsRootConstantBufferView(1, wvpResource->GetGPUVirtualAddress());
-
-			ID3D12DescriptorHeap* descriptorHeaps[] = { srvDescriptorHeap.Get() };
-			commandList->SetDescriptorHeaps(1, descriptorHeaps);
-			commandList->SetGraphicsRootDescriptorTable(2, useMonsterBall ? textureSrvHandleGPU2 : textureSrvHandleGPU);
-
-			commandList->DrawInstanced(UINT(modelData.vertices.size()), 1, 0, 0);
-
-			commandList->SetGraphicsRootDescriptorTable(2, textureSrvHandleGPU);
-			commandList->IASetVertexBuffers(0, 1, &vertexBufferViewSprite);
-			commandList->IASetIndexBuffer(&indexBufferViewSprite);
-			commandList->SetGraphicsRootConstantBufferView(1, transformationMatrixResourceSprite->GetGPUVirtualAddress());
-			commandList->SetGraphicsRootConstantBufferView(0, materialResourceSprite->GetGPUVirtualAddress());
-
-			// 左上のスプライト描画
-			//commandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
+		// 左上のスプライト描画
+		//commandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
 
 #ifdef USE_IMGUI
-			ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList.Get());
+		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList.Get());
 #endif
 
-			barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-			barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-			commandList->ResourceBarrier(1, &barrier);
+		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+		commandList->ResourceBarrier(1, &barrier);
 
-			hr = commandList->Close();
-			assert(SUCCEEDED(hr));
+		hr = commandList->Close();
+		assert(SUCCEEDED(hr));
 
-			ID3D12CommandList* commandLists[] = { commandList.Get() };
-			commandQueue->ExecuteCommandLists(1, commandLists);
+		ID3D12CommandList* commandLists[] = { commandList.Get() };
+		commandQueue->ExecuteCommandLists(1, commandLists);
 
-			swapChain->Present(1, 0);
+		swapChain->Present(1, 0);
 
-			fenceValue++;
-			commandQueue->Signal(fence.Get(), fenceValue);
+		fenceValue++;
+		commandQueue->Signal(fence.Get(), fenceValue);
 
-			if (fence->GetCompletedValue() < fenceValue) {
-				fence->SetEventOnCompletion(fenceValue, fenceEvent);
-				WaitForSingleObject(fenceEvent, INFINITE);
-			}
+		if (fence->GetCompletedValue() < fenceValue) {
+			fence->SetEventOnCompletion(fenceValue, fenceEvent);
+			WaitForSingleObject(fenceEvent, INFINITE);
 		}
 	}
 
@@ -1331,9 +1291,12 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPSTR, _In
 	if (materialResourceSprite)              materialResourceSprite->Unmap(0, nullptr);
 
 	CloseHandle(fenceEvent);
-	CloseWindow(hwnd);
+	// WindowsAPIの終了処理
+	winApp->Finalize();
 
-	CoUninitialize();
+	// WindowsAPI解放
+	delete winApp;
+	winApp = nullptr;
 
 	return 0;
 }
