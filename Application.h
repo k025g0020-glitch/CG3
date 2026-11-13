@@ -39,7 +39,7 @@ private:
 	ModelData model_;
 	Transform objectTransform_{{1,1,1},{0,0,0},{0,0,0}};
 	Transform cameraTransform_{{1,1,1},{0,0,0},{0,0,-10}};
-	bool useMonsterBall_ = false, debugCameraActive_ = false;
+	bool debugCameraActive_ = false;
 	BlendMode blendMode_ = BlendMode::None;
 	bool drawObject3d_ = false;
 

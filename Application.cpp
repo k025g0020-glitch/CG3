@@ -69,7 +69,7 @@ void Application::Initialize(HINSTANCE instance) {
 	input_.Initialize(instance, window_.GetHwnd());
 	debugCamera_.Initialize();
 	dx_.Initialize(window_.GetHwnd(), kWidth, kHeight);
-	audio_.Initialize(); audio_.LoadAndPlayWave("resources/Alarm01.wav");
+	//audio_.Initialize(); audio_.LoadAndPlayWave("resources/Alarm01.wav");
 	InitializeRootSignatureAndPipeline();
 	InitializeScene();
 	InitializeParticle();
@@ -170,12 +170,12 @@ void Application::InitializeScene() {
 
 void Application::InitializeParticle() {
 	// 四角形のPrimitive（6頂点の板ポリゴン）
-	particleModel_.vertices.push_back({ .position = {1.0f, 1.0f, 0.0f, 1.0f}, .texcoord = {0.0f, 0.0f}, .normal = {0.0f, 0.0f, 1.0f} }); // 左上
-	particleModel_.vertices.push_back({ .position = {-1.0f, 1.0f, 0.0f, 1.0f}, .texcoord = {1.0f, 0.0f}, .normal = {0.0f, 0.0f, 1.0f} }); // 右上
-	particleModel_.vertices.push_back({ .position = {1.0f, -1.0f, 0.0f, 1.0f}, .texcoord = {0.0f, 1.0f}, .normal = {0.0f, 0.0f, 1.0f} }); // 左下
-	particleModel_.vertices.push_back({ .position = {1.0f, -1.0f, 0.0f, 1.0f}, .texcoord = {0.0f, 1.0f}, .normal = {0.0f, 0.0f, 1.0f} }); // 左下
-	particleModel_.vertices.push_back({ .position = {-1.0f, 1.0f, 0.0f, 1.0f}, .texcoord = {1.0f, 0.0f}, .normal = {0.0f, 0.0f, 1.0f} }); // 右上
-	particleModel_.vertices.push_back({ .position = {-1.0f, -1.0f, 0.0f, 1.0f}, .texcoord = {1.0f, 1.0f}, .normal = {0.0f, 0.0f, 1.0f} }); // 右下
+	particleModel_.vertices.push_back({ .position = {-1.0f, 1.0f, 0.0f, 1.0f}, .texcoord = {0.0f, 0.0f}, .normal = {0.0f, 0.0f, -1.0f} }); // 左上
+	particleModel_.vertices.push_back({ .position = {1.0f, 1.0f, 0.0f, 1.0f}, .texcoord = {1.0f, 0.0f}, .normal = {0.0f, 0.0f, -1.0f} }); // 右上
+	particleModel_.vertices.push_back({ .position = {-1.0f, -1.0f, 0.0f, 1.0f}, .texcoord = {0.0f, 1.0f}, .normal = {0.0f, 0.0f, -1.0f} }); // 左下
+	particleModel_.vertices.push_back({ .position = {-1.0f, -1.0f, 0.0f, 1.0f}, .texcoord = {0.0f, 1.0f}, .normal = {0.0f, 0.0f, -1.0f} }); // 左下
+	particleModel_.vertices.push_back({ .position = {1.0f, 1.0f, 0.0f, 1.0f}, .texcoord = {1.0f, 0.0f}, .normal = {0.0f, 0.0f, -1.0f} }); // 右上
+	particleModel_.vertices.push_back({ .position = {1.0f, -1.0f, 0.0f, 1.0f}, .texcoord = {1.0f, 1.0f}, .normal = {0.0f, 0.0f, -1.0f} }); // 右下
 	particleModel_.material.textureFilePath = "./resources/uvChecker.png";
 
 	particleVertexResource_ = DirectXCommon::CreateBuffer(dx_.Device(), sizeof(VertexData) * particleModel_.vertices.size());
@@ -238,14 +238,54 @@ void Application::Update() {
 	if (debugCameraActive_) debugCamera_.Update(input_);
 #ifdef USE_IMGUI
 	ImGui_ImplDX12_NewFrame(); ImGui_ImplWin32_NewFrame(); ImGui::NewFrame();
-	const char* names[] = {"None", "Normal", "Add", "Subtract", "Multiply", "Screen"}; int selected = static_cast<int>(blendMode_);
-	ImGui::Begin("Debug Window"); ImGui::DragFloat3("Camera Position", &cameraTransform_.translate.x, 0.1f); ImGui::DragFloat3("Object Rotation", &objectTransform_.rotate.x, 0.01f);
-	ImGui::Checkbox("useMonsterBall", &useMonsterBall_); ImGui::ColorEdit4("Material Color", &material_->color.x); ImGui::ColorEdit4("Light Color", &light_->color.x);
-	ImGui::SliderFloat3("Light Direction", &light_->direction.x, -1, 1); ImGui::SliderFloat("Intensity", &light_->intensity, 0, 5);
-	if (ImGui::Combo("Blend Mode", &selected, names, IM_ARRAYSIZE(names))) { blendMode_ = static_cast<BlendMode>(selected); pipeline_.SetBlendMode(blendMode_); particlePipeline_.SetBlendMode(blendMode_); }
-	ImGui::Checkbox("Draw Object3d", &drawObject3d_);
-	int numInstance = static_cast<int>(numInstance_); if (ImGui::SliderInt("Particle Count", &numInstance, 0, static_cast<int>(kNumInstance))) { numInstance_ = static_cast<uint32_t>(numInstance); }
-	ImGui::ColorEdit4("Particle Color", &particleMaterial_->color.x);
+	ImGui::Begin("Debug Window");
+
+	// ---- Camera ----
+	if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
+		ImGui::Checkbox("Debug Camera (Enter)", &debugCameraActive_);
+		ImGui::BeginDisabled(debugCameraActive_); // DebugCamera使用中は通常カメラの値は使われない
+		ImGui::DragFloat3("Position", &cameraTransform_.translate.x, 0.1f);
+		ImGui::DragFloat3("Rotation", &cameraTransform_.rotate.x, 0.01f);
+		ImGui::EndDisabled();
+	}
+
+	// ---- Render ----
+	if (ImGui::CollapsingHeader("Render", ImGuiTreeNodeFlags_DefaultOpen)) {
+		const char* names[] = {"None", "Normal", "Add", "Subtract", "Multiply", "Screen"};
+		int selected = static_cast<int>(blendMode_);
+		if (ImGui::Combo("Blend Mode", &selected, names, IM_ARRAYSIZE(names))) {
+			blendMode_ = static_cast<BlendMode>(selected);
+			pipeline_.SetBlendMode(blendMode_);
+			particlePipeline_.SetBlendMode(blendMode_);
+		}
+	}
+
+	// ---- Particle ----
+	if (ImGui::CollapsingHeader("Particle", ImGuiTreeNodeFlags_DefaultOpen)) {
+		int numInstance = static_cast<int>(numInstance_);
+		if (ImGui::SliderInt("Count", &numInstance, 0, static_cast<int>(kNumInstance))) { numInstance_ = static_cast<uint32_t>(numInstance); }
+		ImGui::ColorEdit4("Color##Particle", &particleMaterial_->color.x);
+	}
+
+	// ---- Object3d（fence） ----
+	if (ImGui::CollapsingHeader("Object3d")) {
+		ImGui::Checkbox("Draw", &drawObject3d_);
+		ImGui::BeginDisabled(!drawObject3d_); // 描画しないときは編集できないようにする
+		ImGui::DragFloat3("Rotation##Object3d", &objectTransform_.rotate.x, 0.01f);
+		ImGui::ColorEdit4("Color##Object3d", &material_->color.x);
+		// DirectionalLightを使うのはObject3dだけ
+		if (ImGui::TreeNode("Directional Light")) {
+			ImGui::ColorEdit4("Color##Light", &light_->color.x);
+			if (ImGui::SliderFloat3("Direction", &light_->direction.x, -1.0f, 1.0f)) {
+				// 長さが1でないと明るさが変わってしまうので正規化する
+				if (calc::Length(light_->direction) > 0.0f) { light_->direction = calc::Normalize(light_->direction); }
+			}
+			ImGui::SliderFloat("Intensity", &light_->intensity, 0.0f, 5.0f);
+			ImGui::TreePop();
+		}
+		ImGui::EndDisabled();
+	}
+
 	ImGui::End(); ImGui::Render();
 #endif
 	const Matrix4x4 world = calc::MakeAffineMatrix(objectTransform_.scale, objectTransform_.rotate, objectTransform_.translate);
